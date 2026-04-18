@@ -1,2 +1,5 @@
 .codex
 *.o
+*.lz
+out.*
+lz_codec
