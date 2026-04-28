@@ -45,7 +45,7 @@ test: $(BIN)
 			echo "  Soubor $$f"; \
 			orig_size=$$(wc -c < $$f); \
 			rm -f $(TMP)/out*; \
-			./$(BIN) -c -i $$f -o $(TMP)/out.lz -w 256 $$OPTS || exit 1; \
+			./$(BIN) -c -i $$f -o $(TMP)/out.lz -w 512 $$OPTS || exit 1; \
 			comp_size=$$(wc -c < $(TMP)/out.lz); \
 			ratio=$$(echo "scale=2; $$comp_size / $$orig_size" | bc); \
 			echo "    Komprese: $$orig_size B → $$comp_size B  (poměr $$ratio×)"; \
