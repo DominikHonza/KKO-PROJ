@@ -50,13 +50,7 @@ bool ConfigProvider::validate(const Config& config, std::string& error) {
     return true;
 }
 
-bool ConfigProvider::validate_for_compression(
-    const Config& config,
-    int image_width,
-    std::uint64_t input_size,
-    bool adaptive_scan,
-    std::string& error
-) {
+bool ConfigProvider::validate_for_compression(const Config& config, int image_width, std::uint64_t input_size, bool adaptive_scan, std::string& error) {
     if (!validate(config, error)) {
         return false;
     }
@@ -89,8 +83,7 @@ bool ConfigProvider::validate_for_compression(
     }
 
     // Adaptive scanning splits the image into a regular grid of square blocks.
-    if (adaptive_scan &&
-        (width % config.block_dimension != 0 || height % config.block_dimension != 0)) {
+    if (adaptive_scan && (width % config.block_dimension != 0 || height % config.block_dimension != 0)) {
         error = "Nevalidni konfigurace: block_dimension musi delit sirku i vysku obrazu.";
         return false;
     }

@@ -56,11 +56,5 @@ public:
      * @param error Receives a human-readable validation error.
      * @return True when the image can be compressed with the given parameters.
      */
-    static bool validate_for_compression(
-        const Config& config,
-        int image_width,
-        std::uint64_t input_size,
-        bool adaptive_scan,
-        std::string& error
-    );
+    static bool validate_for_compression(const Config& config, int image_width, std::uint64_t input_size, bool adaptive_scan, std::string& error);
 };

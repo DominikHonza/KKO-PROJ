@@ -57,11 +57,7 @@ public:
      * @param error Receives a human-readable message when writing fails.
      * @return True on success, false on validation or I/O failure.
      */
-    static bool write_header(
-        std::ostream& output,
-        const CodecHeader& header,
-        std::string& error
-    );
+    static bool write_header(std::ostream& output, const CodecHeader& header, std::string& error);
 
     /**
      * Reads and validates the file header from the input stream.
@@ -71,11 +67,7 @@ public:
      * @param error Receives a human-readable message when reading fails.
      * @return True on success, false when the file is not a valid LZSS stream.
      */
-    static bool read_header(
-        std::istream& input,
-        CodecHeader& header,
-        std::string& error
-    );
+    static bool read_header(std::istream& input, CodecHeader& header, std::string& error);
 
 private:
     /** File signature used to reject non-LZSS input before decoding payload data. */

@@ -27,8 +27,8 @@ int main(int argc, char *argv[]) {
     print_debug_info(args);
 
     if (args.decompress) {
-        return Decompressor::decompress(args);
+        return Decompressor::execute(args);
+    }else{
+        return Compressor::execute(args);
     }
-
-    return Compressor::compress(args);
 }
