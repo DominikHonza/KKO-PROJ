@@ -22,7 +22,12 @@ constexpr std::uint8_t BLOCK_FLAG_COMPRESSED = 1u << 0;
 constexpr std::uint8_t BLOCK_FLAG_VERTICAL_SCAN = 1u << 1;
 constexpr std::uint32_t BLOCK_METADATA_SIZE = 9;
 
-// Determine RAW input size and rewind the stream for later payload processing.
+/**
+ * @brief Determines size of input stream in bytes.
+ * @param input Input file stream.
+ * @param input_size Output size in bytes.
+ * @return true on success, false otherwise.
+ */
 bool get_input_size(std::ifstream& input, std::uint64_t& input_size) {
     input.seekg(0, std::ios::end);
     const auto position = input.tellg();
@@ -35,7 +40,14 @@ bool get_input_size(std::ifstream& input, std::uint64_t& input_size) {
     return input.good();
 }
 
-// Static scanning stores one logical block; adaptive scanning stores a block grid.
+/**
+ * @brief Calculates number of blocks for adaptive scanning.
+ * @param config Compression configuration.
+ * @param width Image width.
+ * @param height Image height.
+ * @param adaptive_scan Flag for adaptive mode.
+ * @return Number of blocks.
+ */
 std::uint32_t calculate_block_count(const Config& config, std::uint32_t width, std::uint32_t height, bool adaptive_scan) {
     if (!adaptive_scan) {
         return 1;
@@ -45,6 +57,13 @@ std::uint32_t calculate_block_count(const Config& config, std::uint32_t width, s
 }
 }
 
+/**
+ * @brief Reads RAW data from input stream.
+ * @param input Input stream.
+ * @param raw_data Output buffer.
+ * @param expected_size Expected number of bytes.
+ * @return true on success, false otherwise.
+ */
 bool Compressor::read_raw_data(std::istream& input, std::vector<std::uint8_t>& raw_data, std::uint32_t expected_size) {
     raw_data.resize(expected_size);
 
@@ -57,8 +76,11 @@ bool Compressor::read_raw_data(std::istream& input, std::vector<std::uint8_t>& r
     return input.gcount() == static_cast<std::streamsize>(raw_data.size());
 }
 
-// Run the compression workflow: validate RAW input, write the codec header,
-// and then delegate payload processing to Compressor::compress.
+/**
+ * @brief Executes compression workflow.
+ * @param args Parsed CLI arguments.
+ * @return Exit code (0 success, non-zero error).
+ */
 int Compressor::execute(const ParsedArgs& args) {
 
     // Check if input file can be opened
@@ -135,7 +157,13 @@ int Compressor::execute(const ParsedArgs& args) {
     return 0;
 }
 
-// Select the image processing path according to switches stored in the header.
+/**
+ * @brief Selects compression mode.
+ * @param raw_data Input image data.
+ * @param output Output stream.
+ * @param header Codec header.
+ * @return true on success, false otherwise.
+ */
 bool Compressor::compress(const std::vector<std::uint8_t>& raw_data, std::ostream& output, const CodecHeader& header) {
     if (header.adaptive_scan) {
         return compress_adaptive(raw_data, output, header);
@@ -144,22 +172,40 @@ bool Compressor::compress(const std::vector<std::uint8_t>& raw_data, std::ostrea
     }
 }
 
-// Static mode keeps the whole image as one horizontal byte stream.
+/**
+ * @brief Compresses entire image as one block.
+ * @param raw_data Input image data.
+ * @param output Output stream.
+ * @param header Codec header.
+ * @return true on success, false otherwise.
+ */
 bool Compressor::compress_static(const std::vector<std::uint8_t>& raw_data, std::ostream& output, const CodecHeader& header) {
     const EncodedBlock block = encode_block(raw_data, header, false);
     return write_block(block, output);
 }
 
-// Adaptive mode will later split the image into blocks and choose scan order.
+/**
+ * @brief Compresses image using adaptive block scanning.
+ * @param raw_data Input image data.
+ * @param output Output stream.
+ * @param header Codec header.
+ * @return true on success, false otherwise.
+ */
 bool Compressor::compress_adaptive(const std::vector<std::uint8_t>& raw_data, std::ostream& output, const CodecHeader& header) {
     const std::uint32_t block_dimension = header.config.block_dimension;
 
     for (std::uint32_t block_y = 0; block_y < header.height; block_y += block_dimension) {
         for (std::uint32_t block_x = 0; block_x < header.width; block_x += block_dimension) {
+
+            // Encode block using horizontal/vertical scan for compare
             const EncodedBlock horizontal_block = encode_block(scan_block_horizontal(raw_data, header, block_x, block_y), header, false);
             const EncodedBlock vertical_block = encode_block(scan_block_vertical(raw_data, header, block_x, block_y), header, true);
+
+            // Compute total size including metadata
             const std::uint32_t horizontal_size = BLOCK_METADATA_SIZE + static_cast<std::uint32_t>(horizontal_block.payload.size());
             const std::uint32_t vertical_size = BLOCK_METADATA_SIZE + static_cast<std::uint32_t>(vertical_block.payload.size());
+
+            // Select smaller variant (better compression)
             const EncodedBlock& block = vertical_size < horizontal_size ? vertical_block : horizontal_block;
 
             if (!write_block(block, output)) {
@@ -171,6 +217,14 @@ bool Compressor::compress_adaptive(const std::vector<std::uint8_t>& raw_data, st
     return output.good();
 }
 
+/**
+ * @brief Extracts block using horizontal scan.
+ * @param raw_data Input image data.
+ * @param header Codec header.
+ * @param block_x Block X coordinate.
+ * @param block_y Block Y coordinate.
+ * @return Serialized block data.
+ */
 std::vector<std::uint8_t> Compressor::scan_block_horizontal(const std::vector<std::uint8_t>& raw_data, const CodecHeader& header, std::uint32_t block_x, std::uint32_t block_y) {
     const std::uint32_t block_dimension = header.config.block_dimension;
     std::vector<std::uint8_t> block_data;
@@ -186,6 +240,14 @@ std::vector<std::uint8_t> Compressor::scan_block_horizontal(const std::vector<st
     return block_data;
 }
 
+/**
+ * @brief Extracts block using vertical scan.
+ * @param raw_data Input image data.
+ * @param header Codec header.
+ * @param block_x Block X coordinate.
+ * @param block_y Block Y coordinate.
+ * @return Serialized block data.
+ */
 std::vector<std::uint8_t> Compressor::scan_block_vertical(const std::vector<std::uint8_t>& raw_data, const CodecHeader& header, std::uint32_t block_x, std::uint32_t block_y) {
     const std::uint32_t block_dimension = header.config.block_dimension;
     std::vector<std::uint8_t> block_data;
@@ -200,7 +262,11 @@ std::vector<std::uint8_t> Compressor::scan_block_vertical(const std::vector<std:
     return block_data;
 }
 
-// Applys differernce model if arg is on
+/**
+ * @brief Applies difference model.
+ * @param data Input/output data.
+ * @param header Codec header.
+ */
 void Compressor::apply_model(std::vector<std::uint8_t>& data, const CodecHeader& header) {
     if (!header.use_model || data.empty()) {
         return;
@@ -215,7 +281,12 @@ void Compressor::apply_model(std::vector<std::uint8_t>& data, const CodecHeader&
     }
 }
 
-// Temporary pass-through block writer used until block metadata and LZSS exist.
+/**
+ * @brief Writes encoded block to output.
+ * @param block Encoded block.
+ * @param output Output stream.
+ * @return true on success, false otherwise.
+ */
 bool Compressor::write_block(const EncodedBlock& block, std::ostream& output) {
     std::uint8_t flags = 0;
 
@@ -242,7 +313,14 @@ bool Compressor::write_block(const EncodedBlock& block, std::ostream& output) {
     return output.good();
 }
 
-// MAIN LZSS method, compressed block of data
+
+/**
+ * @brief Encodes block using LZSS.
+ * @param block_data Input block data.
+ * @param header Codec header.
+ * @param vertical_scan Scan direction flag.
+ * @return Encoded block.
+ */
 Compressor::EncodedBlock Compressor::encode_block(const std::vector<std::uint8_t>& block_data, const CodecHeader& header, bool vertical_scan) {
     EncodedBlock block;
     block.compressed = false;
@@ -251,8 +329,10 @@ Compressor::EncodedBlock Compressor::encode_block(const std::vector<std::uint8_t
     block.payload = block_data;
 
     apply_model(block.payload, header);
+    // Compress using LZSS
     const std::vector<std::uint8_t> compressed_payload = LZSS::compress(block.payload, header.config);
 
+     // Use compressed data only if it is smaller than original
     if (compressed_payload.size() < block.payload.size()) {
         block.compressed = true;
         block.payload = compressed_payload;

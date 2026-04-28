@@ -7,10 +7,20 @@
 
 #include "ConfigProvider.hpp"
 
+/**
+ * @brief Returns default compression configuration.
+ * @return Default Config structure.
+ */
 Config ConfigProvider::get_default() {
     return Config{};
 }
 
+/**
+ * @brief Validates basic configuration parameters.
+ * @param config Compression configuration.
+ * @param error Output error message.
+ * @return true if configuration is valid, false otherwise.
+ */
 bool ConfigProvider::validate(const Config& config, std::string& error) {
     // A zero block would make adaptive scan grid construction impossible.
     if (config.block_dimension == 0) {
@@ -50,6 +60,15 @@ bool ConfigProvider::validate(const Config& config, std::string& error) {
     return true;
 }
 
+/**
+ * @brief Validates configuration and input parameters for compression.
+ * @param config Compression configuration.
+ * @param image_width Image width from CLI.
+ * @param input_size Size of input file in bytes.
+ * @param adaptive_scan Flag for adaptive scanning.
+ * @param error Output error message.
+ * @return true if input and configuration are valid, false otherwise.
+ */
 bool ConfigProvider::validate_for_compression(const Config& config, int image_width, std::uint64_t input_size, bool adaptive_scan, std::string& error) {
     if (!validate(config, error)) {
         return false;

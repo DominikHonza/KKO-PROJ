@@ -16,7 +16,12 @@
 
 namespace {
 
-// Validate relationships that the decoder relies on while rebuilding pixels.
+/**
+ * @brief Validates header consistency.
+ * @param header Codec header.
+ * @param error Output error message.
+ * @return true if header is valid, false otherwise.
+ */
 bool validate_header(const CodecHeader& header, std::string& error) {
     if (header.width == 0) {
         error = "Nevalidni hlavicka: sirka obrazu musi byt vetsi nez 0.";
@@ -69,8 +74,13 @@ bool validate_header(const CodecHeader& header, std::string& error) {
 }
 }
 
-// Validate the metadata, write the magic signature, and serialize all fields
-// in the fixed order expected by the decoder.
+/**
+ * @brief Validate the metadata, write the magic signature, and serialize all fields in the fixed order expected by the decoder.
+ * @param output Output stream.
+ * @param header Codec header.
+ * @param error Output error message.
+ * @return true on success, false otherwise.
+ */
 bool HeaderProvider::write_header(std::ostream& output, const CodecHeader& header, std::string& error) {
     if (!validate_header(header, error)) {
         return false;
@@ -98,8 +108,13 @@ bool HeaderProvider::write_header(std::ostream& output, const CodecHeader& heade
     return true;
 }
 
-// Read the magic signature first, reject unknown input, then deserialize and
-// validate the remaining header fields before payload decoding starts.
+/**
+ * @brief Read the magic signature first, reject unknown input, then deserialize and validate the remaining header fields before payload decoding starts.
+ * @param input Input stream.
+ * @param header Output header structure.
+ * @param error Output error message.
+ * @return true on success, false otherwise.
+ */
 bool HeaderProvider::read_header(std::istream& input, CodecHeader& header, std::string& error) {
     std::array<char, sizeof(MAGIC)> magic{};
     if (!input.read(magic.data(), static_cast<std::streamsize>(magic.size()))) {
