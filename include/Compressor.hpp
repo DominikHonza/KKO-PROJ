@@ -76,6 +76,16 @@ private:
     static EncodedBlock encode_block(const std::vector<std::uint8_t>& block_data, const CodecHeader& header, bool vertical_scan);
 
     /**
+     * Serializes one image block row by row.
+     */
+    static std::vector<std::uint8_t> scan_block_horizontal(const std::vector<std::uint8_t>& raw_data, const CodecHeader& header, std::uint32_t block_x, std::uint32_t block_y);
+
+    /**
+     * Serializes one image block column by column.
+     */
+    static std::vector<std::uint8_t> scan_block_vertical(const std::vector<std::uint8_t>& raw_data, const CodecHeader& header, std::uint32_t block_x, std::uint32_t block_y);
+
+    /**
      * Applies the optional predictive model before LZSS compression.
      */
     static void apply_model(std::vector<std::uint8_t>& data, const CodecHeader& header);

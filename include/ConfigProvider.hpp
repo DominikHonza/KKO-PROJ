@@ -15,7 +15,7 @@
  */
 struct Config {
     /** Side length of square image blocks used by adaptive scanning. */
-    uint16_t block_dimension = 32;
+    uint16_t block_dimension = 128;
 
     /** Maximum number of previous bytes searched by LZSS. */
     uint16_t history_buffer_size = 4096;

@@ -6,9 +6,10 @@
  */
 
 #include "Decompressor.hpp"
-
+#include "ByteIO.hpp"
 #include "HeaderProvider.hpp"
 #include "LZSS.hpp"
+
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -17,46 +18,6 @@
 namespace {
 constexpr std::uint8_t BLOCK_FLAG_COMPRESSED = 1u << 0;
 constexpr std::uint8_t BLOCK_FLAG_VERTICAL_SCAN = 1u << 1;
-
-bool read_u8(std::istream& input, std::uint8_t& value) {
-    char byte = 0;
-    if (!input.get(byte)) {
-        return false;
-    }
-
-    value = static_cast<std::uint8_t>(byte);
-    return true;
-}
-
-bool read_u32(std::istream& input, std::uint32_t& value) {
-    std::uint8_t b0 = 0;
-    std::uint8_t b1 = 0;
-    std::uint8_t b2 = 0;
-    std::uint8_t b3 = 0;
-
-    if (!read_u8(input, b0) || !read_u8(input, b1) || !read_u8(input, b2) || !read_u8(input, b3)) {
-        return false;
-    }
-
-    value = static_cast<std::uint32_t>(b0) | (static_cast<std::uint32_t>(b1) << 8u) | (static_cast<std::uint32_t>(b2) << 16u) | (static_cast<std::uint32_t>(b3) << 24u);
-    return true;
-}
-
-#ifdef DEBUG
-void print_header_debug(const CodecHeader& header) {
-    std::cout << "Cteni hlavicky:\n";
-    std::cout << "  Model: " << (header.use_model ? "aktivni" : "neaktivni") << "\n";
-    std::cout << "  Skenovani: " << (header.adaptive_scan ? "adaptivni" : "sekvencni") << "\n";
-    std::cout << "  Sirka: " << header.width << "\n";
-    std::cout << "  Vyska: " << header.height << "\n";
-    std::cout << "  Puvodni velikost: " << header.original_size << "\n";
-    std::cout << "  Pocet bloku: " << header.block_count << "\n";
-    std::cout << "  Velikost bloku: " << header.config.block_dimension << "\n";
-    std::cout << "  Historie LZSS: " << header.config.history_buffer_size << "\n";
-    std::cout << "  Lookahead LZSS: " << static_cast<int>(header.config.lookahead_buffer_size) << "\n";
-    std::cout << "  Minimalni shoda: " << static_cast<int>(header.config.min_match_length) << "\n";
-}
-#endif
 }
 
 // Run the decompression workflow: read the codec header first so the decoder
@@ -74,10 +35,6 @@ int Decompressor::execute(const ParsedArgs& args) {
         std::cerr << error << "\n";
         return 1;
     }
-
-#ifdef DEBUG
-    print_header_debug(header);
-#endif
 
     std::ofstream out(args.outfile, std::ios::binary);
     if (!out) {
@@ -158,10 +115,18 @@ bool Decompressor::write_adaptive_blocks(std::istream& input, std::ostream& outp
             apply_inverse_model(block.payload, header);
 
             std::size_t source_index = 0;
-            for (std::uint32_t y = 0; y < block_dimension; ++y) {
-                const std::uint32_t row_start = (block_y + y) * header.width + block_x;
+            if (block.vertical_scan) {
                 for (std::uint32_t x = 0; x < block_dimension; ++x) {
-                    image[row_start + x] = block.payload[source_index++];
+                    for (std::uint32_t y = 0; y < block_dimension; ++y) {
+                        image[(block_y + y) * header.width + block_x + x] = block.payload[source_index++];
+                    }
+                }
+            } else {
+                for (std::uint32_t y = 0; y < block_dimension; ++y) {
+                    const std::uint32_t row_start = (block_y + y) * header.width + block_x;
+                    for (std::uint32_t x = 0; x < block_dimension; ++x) {
+                        image[row_start + x] = block.payload[source_index++];
+                    }
                 }
             }
         }
@@ -184,7 +149,7 @@ bool Decompressor::read_block(std::istream& input, EncodedBlock& block) {
     std::uint8_t flags = 0;
     std::uint32_t payload_size = 0;
 
-    if (!read_u8(input, flags) || !read_u32(input, block.raw_size) || !read_u32(input, payload_size)) {
+    if (!ByteIO::read_u8(input, flags) || !ByteIO::read_u32(input, block.raw_size) || !ByteIO::read_u32(input, payload_size)) {
         return false;
     }
 

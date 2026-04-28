@@ -6,6 +6,7 @@
  */
 
 #include "HeaderProvider.hpp"
+#include "ByteIO.hpp"
 
 #include <algorithm>
 #include <array>
@@ -14,61 +15,6 @@
 #include <ostream>
 
 namespace {
-// Write unsigned integers explicitly in little-endian order.
-bool write_u8(std::ostream& output, std::uint8_t value) {
-    output.put(static_cast<char>(value));
-    return output.good();
-}
-
-bool write_u16(std::ostream& output, std::uint16_t value) {
-    return write_u8(output, static_cast<std::uint8_t>(value & 0xffu)) &&
-           write_u8(output, static_cast<std::uint8_t>((value >> 8u) & 0xffu));
-}
-
-bool write_u32(std::ostream& output, std::uint32_t value) {
-    return write_u8(output, static_cast<std::uint8_t>(value & 0xffu)) &&
-           write_u8(output, static_cast<std::uint8_t>((value >> 8u) & 0xffu)) &&
-           write_u8(output, static_cast<std::uint8_t>((value >> 16u) & 0xffu)) &&
-           write_u8(output, static_cast<std::uint8_t>((value >> 24u) & 0xffu));
-}
-
-// Read unsigned integers in the same little-endian order used by the writer.
-bool read_u8(std::istream& input, std::uint8_t& value) {
-    char byte = 0;
-    if (!input.get(byte)) {
-        return false;
-    }
-
-    value = static_cast<std::uint8_t>(byte);
-    return true;
-}
-
-bool read_u16(std::istream& input, std::uint16_t& value) {
-    std::uint8_t b0 = 0;
-    std::uint8_t b1 = 0;
-
-    if (!read_u8(input, b0) || !read_u8(input, b1)) {
-        return false;
-    }
-
-    value = static_cast<std::uint16_t>(b0) |
-            static_cast<std::uint16_t>(static_cast<std::uint16_t>(b1) << 8u);
-    return true;
-}
-
-bool read_u32(std::istream& input, std::uint32_t& value) {
-    std::uint8_t b0 = 0;
-    std::uint8_t b1 = 0;
-    std::uint8_t b2 = 0;
-    std::uint8_t b3 = 0;
-
-    if (!read_u8(input, b0) || !read_u8(input, b1) || !read_u8(input, b2) || !read_u8(input, b3)) {
-        return false;
-    }
-
-    value = static_cast<std::uint32_t>(b0) | (static_cast<std::uint32_t>(b1) << 8u) | (static_cast<std::uint32_t>(b2) << 16u) | (static_cast<std::uint32_t>(b3) << 24u);
-    return true;
-}
 
 // Validate relationships that the decoder relies on while rebuilding pixels.
 bool validate_header(const CodecHeader& header, std::string& error) {
@@ -144,7 +90,7 @@ bool HeaderProvider::write_header(std::ostream& output, const CodecHeader& heade
         flags |= FLAG_ADAPTIVE_SCAN;
     }
 
-    if (!write_u8(output, flags) || !write_u32(output, header.width) || !write_u32(output, header.height) || !write_u32(output, header.original_size) || !write_u16(output, header.config.block_dimension) || !write_u16(output, header.config.history_buffer_size) || !write_u8(output, header.config.lookahead_buffer_size) || !write_u8(output, header.config.min_match_length) || !write_u32(output, header.block_count)) {
+    if (!ByteIO::write_u8(output, flags) || !ByteIO::write_u32(output, header.width) || !ByteIO::write_u32(output, header.height) || !ByteIO::write_u32(output, header.original_size) || !ByteIO::write_u16(output, header.config.block_dimension) || !ByteIO::write_u16(output, header.config.history_buffer_size) || !ByteIO::write_u8(output, header.config.lookahead_buffer_size) || !ByteIO::write_u8(output, header.config.min_match_length) || !ByteIO::write_u32(output, header.block_count)) {
         error = "Chyba pri zapisu hlavicky.";
         return false;
     }
@@ -167,7 +113,7 @@ bool HeaderProvider::read_header(std::istream& input, CodecHeader& header, std::
     }
 
     std::uint8_t flags = 0;
-    if (!read_u8(input, flags) || !read_u32(input, header.width) || !read_u32(input, header.height) || !read_u32(input, header.original_size) || !read_u16(input, header.config.block_dimension) || !read_u16(input, header.config.history_buffer_size) || !read_u8(input, header.config.lookahead_buffer_size) || !read_u8(input, header.config.min_match_length) || !read_u32(input, header.block_count)) {
+    if (!ByteIO::read_u8(input, flags) || !ByteIO::read_u32(input, header.width) || !ByteIO::read_u32(input, header.height) || !ByteIO::read_u32(input, header.original_size) || !ByteIO::read_u16(input, header.config.block_dimension) || !ByteIO::read_u16(input, header.config.history_buffer_size) || !ByteIO::read_u8(input, header.config.lookahead_buffer_size) || !ByteIO::read_u8(input, header.config.min_match_length) || !ByteIO::read_u32(input, header.block_count)) {
         error = "Nevalidni vstup: soubor neobsahuje celou hlavicku.";
         return false;
     }

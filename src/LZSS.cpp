@@ -6,6 +6,7 @@
  */
 
 #include "LZSS.hpp"
+#include "ByteIO.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -15,38 +16,6 @@ struct Match {
     std::uint16_t offset = 0;
     std::uint8_t length = 0;
 };
-
-bool write_u8(std::vector<std::uint8_t>& output, std::uint8_t value) {
-    output.push_back(value);
-    return true;
-}
-
-bool write_u16(std::vector<std::uint8_t>& output, std::uint16_t value) {
-    output.push_back(static_cast<std::uint8_t>(value & 0xffu));
-    output.push_back(static_cast<std::uint8_t>((value >> 8u) & 0xffu));
-    return true;
-}
-
-bool read_u8(const std::vector<std::uint8_t>& input, std::size_t& position, std::uint8_t& value) {
-    if (position >= input.size()) {
-        return false;
-    }
-
-    value = input[position++];
-    return true;
-}
-
-bool read_u16(const std::vector<std::uint8_t>& input, std::size_t& position, std::uint16_t& value) {
-    std::uint8_t b0 = 0;
-    std::uint8_t b1 = 0;
-
-    if (!read_u8(input, position, b0) || !read_u8(input, position, b1)) {
-        return false;
-    }
-
-    value = static_cast<std::uint16_t>(b0) | static_cast<std::uint16_t>(static_cast<std::uint16_t>(b1) << 8u);
-    return true;
-}
 
 Match find_best_match(const std::vector<std::uint8_t>& input, std::size_t position, const Config& config) {
     Match best;
@@ -87,11 +56,11 @@ std::vector<std::uint8_t> LZSS::compress(const std::vector<std::uint8_t>& input,
 
             if (match.length >= config.min_match_length) {
                 flags |= static_cast<std::uint8_t>(1u << bit);
-                write_u16(output, match.offset);
-                write_u8(output, match.length);
+                ByteIO::write_u16(output, match.offset);
+                ByteIO::write_u8(output, match.length);
                 position += match.length;
             } else {
-                write_u8(output, input[position]);
+                ByteIO::write_u8(output, input[position]);
                 ++position;
             }
         }
@@ -110,21 +79,21 @@ bool LZSS::decompress(const std::vector<std::uint8_t>& input, std::uint32_t expe
     std::size_t position = 0;
     while (position < input.size() && output.size() < expected_size) {
         std::uint8_t flags = 0;
-        if (!read_u8(input, position, flags)) {
+        if (!ByteIO::read_u8(input, position, flags)) {
             return false;
         }
 
         for (std::uint8_t bit = 0; bit < 8 && output.size() < expected_size; ++bit) {
             if ((flags & static_cast<std::uint8_t>(1u << bit)) == 0) {
                 std::uint8_t literal = 0;
-                if (!read_u8(input, position, literal)) {
+                if (!ByteIO::read_u8(input, position, literal)) {
                     return false;
                 }
                 output.push_back(literal);
             } else {
                 std::uint16_t offset = 0;
                 std::uint8_t length = 0;
-                if (!read_u16(input, position, offset) || !read_u8(input, position, length)) {
+                if (!ByteIO::read_u16(input, position, offset) || !ByteIO::read_u8(input, position, length)) {
                     return false;
                 }
 

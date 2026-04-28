@@ -6,10 +6,11 @@
  */
 
 #include "Compressor.hpp"
-
 #include "ConfigProvider.hpp"
 #include "HeaderProvider.hpp"
+#include "ByteIO.hpp"
 #include "LZSS.hpp"
+
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -19,6 +20,7 @@
 namespace {
 constexpr std::uint8_t BLOCK_FLAG_COMPRESSED = 1u << 0;
 constexpr std::uint8_t BLOCK_FLAG_VERTICAL_SCAN = 1u << 1;
+constexpr std::uint32_t BLOCK_METADATA_SIZE = 9;
 
 // Determine RAW input size and rewind the stream for later payload processing.
 bool get_input_size(std::ifstream& input, std::uint64_t& input_size) {
@@ -41,34 +43,18 @@ std::uint32_t calculate_block_count(const Config& config, std::uint32_t width, s
 
     return (width / config.block_dimension) * (height / config.block_dimension);
 }
-
-bool write_u8(std::ostream& output, std::uint8_t value) {
-    output.put(static_cast<char>(value));
-    return output.good();
 }
 
-bool write_u32(std::ostream& output, std::uint32_t value) {
-    return write_u8(output, static_cast<std::uint8_t>(value & 0xffu)) &&
-           write_u8(output, static_cast<std::uint8_t>((value >> 8u) & 0xffu)) &&
-           write_u8(output, static_cast<std::uint8_t>((value >> 16u) & 0xffu)) &&
-           write_u8(output, static_cast<std::uint8_t>((value >> 24u) & 0xffu));
-}
+bool Compressor::read_raw_data(std::istream& input, std::vector<std::uint8_t>& raw_data, std::uint32_t expected_size) {
+    raw_data.resize(expected_size);
 
-#ifdef DEBUG
-void print_header_debug(const CodecHeader& header) {
-    std::cout << "Zapis hlavicky:\n";
-    std::cout << "  Model: " << (header.use_model ? "aktivni" : "neaktivni") << "\n";
-    std::cout << "  Skenovani: " << (header.adaptive_scan ? "adaptivni" : "sekvencni") << "\n";
-    std::cout << "  Sirka: " << header.width << "\n";
-    std::cout << "  Vyska: " << header.height << "\n";
-    std::cout << "  Puvodni velikost: " << header.original_size << "\n";
-    std::cout << "  Pocet bloku: " << header.block_count << "\n";
-    std::cout << "  Velikost bloku: " << header.config.block_dimension << "\n";
-    std::cout << "  Historie LZSS: " << header.config.history_buffer_size << "\n";
-    std::cout << "  Lookahead LZSS: " << static_cast<int>(header.config.lookahead_buffer_size) << "\n";
-    std::cout << "  Minimalni shoda: " << static_cast<int>(header.config.min_match_length) << "\n";
-}
-#endif
+    if (expected_size == 0) {
+        return true;
+    }
+
+    input.read(reinterpret_cast<char*>(raw_data.data()), static_cast<std::streamsize>(raw_data.size()));
+
+    return input.gcount() == static_cast<std::streamsize>(raw_data.size());
 }
 
 // Run the compression workflow: validate RAW input, write the codec header,
@@ -127,10 +113,6 @@ int Compressor::execute(const ParsedArgs& args) {
     header.block_count = calculate_block_count(config, width, height, args.adaptive_scan);
     header.config = config;
 
-#ifdef DEBUG
-    print_header_debug(header);
-#endif
-
     // Writes header to output file
     if (!HeaderProvider::write_header(out, header, error)) {
         std::cerr << error << "\n";
@@ -157,21 +139,9 @@ int Compressor::execute(const ParsedArgs& args) {
 bool Compressor::compress(const std::vector<std::uint8_t>& raw_data, std::ostream& output, const CodecHeader& header) {
     if (header.adaptive_scan) {
         return compress_adaptive(raw_data, output, header);
+    }else{
+        return compress_static(raw_data, output, header);
     }
-
-    return compress_static(raw_data, output, header);
-}
-
-bool Compressor::read_raw_data(std::istream& input, std::vector<std::uint8_t>& raw_data, std::uint32_t expected_size) {
-    raw_data.resize(expected_size);
-
-    if (expected_size == 0) {
-        return true;
-    }
-
-    input.read(reinterpret_cast<char*>(raw_data.data()), static_cast<std::streamsize>(raw_data.size()));
-
-    return input.gcount() == static_cast<std::streamsize>(raw_data.size());
 }
 
 // Static mode keeps the whole image as one horizontal byte stream.
@@ -186,17 +156,12 @@ bool Compressor::compress_adaptive(const std::vector<std::uint8_t>& raw_data, st
 
     for (std::uint32_t block_y = 0; block_y < header.height; block_y += block_dimension) {
         for (std::uint32_t block_x = 0; block_x < header.width; block_x += block_dimension) {
-            std::vector<std::uint8_t> block_data;
-            block_data.reserve(static_cast<std::size_t>(block_dimension) * block_dimension);
+            const EncodedBlock horizontal_block = encode_block(scan_block_horizontal(raw_data, header, block_x, block_y), header, false);
+            const EncodedBlock vertical_block = encode_block(scan_block_vertical(raw_data, header, block_x, block_y), header, true);
+            const std::uint32_t horizontal_size = BLOCK_METADATA_SIZE + static_cast<std::uint32_t>(horizontal_block.payload.size());
+            const std::uint32_t vertical_size = BLOCK_METADATA_SIZE + static_cast<std::uint32_t>(vertical_block.payload.size());
+            const EncodedBlock& block = vertical_size < horizontal_size ? vertical_block : horizontal_block;
 
-            for (std::uint32_t y = 0; y < block_dimension; ++y) {
-                const std::uint32_t row_start = (block_y + y) * header.width + block_x;
-                for (std::uint32_t x = 0; x < block_dimension; ++x) {
-                    block_data.push_back(raw_data[row_start + x]);
-                }
-            }
-
-            const EncodedBlock block = encode_block(block_data, header, false);
             if (!write_block(block, output)) {
                 return false;
             }
@@ -206,23 +171,33 @@ bool Compressor::compress_adaptive(const std::vector<std::uint8_t>& raw_data, st
     return output.good();
 }
 
-// MAIN LZSS method, compressed block of data
-Compressor::EncodedBlock Compressor::encode_block(const std::vector<std::uint8_t>& block_data, const CodecHeader& header, bool vertical_scan) {
-    EncodedBlock block;
-    block.compressed = false;
-    block.vertical_scan = vertical_scan;
-    block.raw_size = static_cast<std::uint32_t>(block_data.size());
-    block.payload = block_data;
+std::vector<std::uint8_t> Compressor::scan_block_horizontal(const std::vector<std::uint8_t>& raw_data, const CodecHeader& header, std::uint32_t block_x, std::uint32_t block_y) {
+    const std::uint32_t block_dimension = header.config.block_dimension;
+    std::vector<std::uint8_t> block_data;
+    block_data.reserve(static_cast<std::size_t>(block_dimension) * block_dimension);
 
-    apply_model(block.payload, header);
-    const std::vector<std::uint8_t> compressed_payload = LZSS::compress(block.payload, header.config);
-
-    if (compressed_payload.size() < block.payload.size()) {
-        block.compressed = true;
-        block.payload = compressed_payload;
+    for (std::uint32_t y = 0; y < block_dimension; ++y) {
+        const std::uint32_t row_start = (block_y + y) * header.width + block_x;
+        for (std::uint32_t x = 0; x < block_dimension; ++x) {
+            block_data.push_back(raw_data[row_start + x]);
+        }
     }
 
-    return block;
+    return block_data;
+}
+
+std::vector<std::uint8_t> Compressor::scan_block_vertical(const std::vector<std::uint8_t>& raw_data, const CodecHeader& header, std::uint32_t block_x, std::uint32_t block_y) {
+    const std::uint32_t block_dimension = header.config.block_dimension;
+    std::vector<std::uint8_t> block_data;
+    block_data.reserve(static_cast<std::size_t>(block_dimension) * block_dimension);
+
+    for (std::uint32_t x = 0; x < block_dimension; ++x) {
+        for (std::uint32_t y = 0; y < block_dimension; ++y) {
+            block_data.push_back(raw_data[(block_y + y) * header.width + block_x + x]);
+        }
+    }
+
+    return block_data;
 }
 
 // Applys differernce model if arg is on
@@ -255,7 +230,7 @@ bool Compressor::write_block(const EncodedBlock& block, std::ostream& output) {
     }
 
     // Writes flags how was compression performed and metadata
-    if (!write_u8(output, flags) || !write_u32(output, block.raw_size) || !write_u32(output, static_cast<std::uint32_t>(block.payload.size()))) {
+    if (!ByteIO::write_u8(output, flags) || !ByteIO::write_u32(output, block.raw_size) || !ByteIO::write_u32(output, static_cast<std::uint32_t>(block.payload.size()))) {
         return false;
     }
 
@@ -265,4 +240,23 @@ bool Compressor::write_block(const EncodedBlock& block, std::ostream& output) {
     }
 
     return output.good();
+}
+
+// MAIN LZSS method, compressed block of data
+Compressor::EncodedBlock Compressor::encode_block(const std::vector<std::uint8_t>& block_data, const CodecHeader& header, bool vertical_scan) {
+    EncodedBlock block;
+    block.compressed = false;
+    block.vertical_scan = vertical_scan;
+    block.raw_size = static_cast<std::uint32_t>(block_data.size());
+    block.payload = block_data;
+
+    apply_model(block.payload, header);
+    const std::vector<std::uint8_t> compressed_payload = LZSS::compress(block.payload, header.config);
+
+    if (compressed_payload.size() < block.payload.size()) {
+        block.compressed = true;
+        block.payload = compressed_payload;
+    }
+
+    return block;
 }
