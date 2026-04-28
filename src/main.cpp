@@ -1,10 +1,13 @@
 #include "args.hpp"
+#include "Compressor.hpp"
+#include "Decompressor.hpp"
 #include <iostream>
-#include <fstream>
 
-int main(int argc, char *argv[]) {
-    ParsedArgs args = parse_arguments(argc, argv);
-
+namespace {
+void print_debug_info(const ParsedArgs& args) {
+#ifndef DEBUG
+    (void)args;
+#endif
 #ifdef DEBUG
     std::cout << "Režim: " << (args.decompress ? "dekomprese" : "komprese") << "\n";
     std::cout << "Vstupní soubor: " << args.infile << "\n";
@@ -16,21 +19,16 @@ int main(int argc, char *argv[]) {
         std::cout << "Skenování: " << (args.adaptive_scan ? "adaptivní" : "sekvenční") << "\n";
     }
 #endif
+}
+}
 
+int main(int argc, char *argv[]) {
+    ParsedArgs args = parse_arguments(argc, argv);
+    print_debug_info(args);
 
-	std::ifstream in(args.infile, std::ios::binary);
-    if (!in) {
-        std::cerr << "Nelze otevřít vstupní soubor: " << args.infile << "\n";
-        return 1;
+    if (args.decompress) {
+        return Decompressor::decompress(args);
     }
 
-    std::ofstream out(args.outfile, std::ios::binary);
-    if (!out) {
-        std::cerr << "Nelze otevřít výstupní soubor: " << args.outfile << "\n";
-        return 1;
-    }
-
-    out << in.rdbuf();
-
-    return 0;
+    return Compressor::compress(args);
 }
