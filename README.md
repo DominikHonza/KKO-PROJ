@@ -85,3 +85,11 @@ Pak se zpracovává samotný datový obsah. Ve statickém režimu se čtou jedno
 | shp2.raw | -a | 262144 | 51722 | 0,1973 | 1,5784 | 1,9007 | ,6404 | ,0139 | OK |
 | shp2.raw | -a_-m | 262144 | 56053 | 0,2138 | 1,7106 | 1,9007 | ,4630 | ,0199 | OK |
 <!-- RESULTS_END -->
+
+## Použité zdroje
+
+1. STOER, J. A., a SZYMAŃSKI, T. G. Data compression via textual substitution. *Journal of the ACM*, 1982, 29(4), 928–951.
+
+2. SALOMON, D. *Data Compression: The Complete Reference*. 3rd ed. New York: Springer, 2004.
+
+3. Lempel–Ziv–Storer–Szymanski (LZSS). In: Wikipedia: the free encyclopedia [online]. Dostupné z: https://en.wikipedia.org/wiki/Lempel%E2%80%93Ziv%E2%80%93Storer%E2%80%93Szymanski
