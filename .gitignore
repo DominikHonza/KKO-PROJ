@@ -1,7 +1,11 @@
 .codex
+.vscode
+.vscode/sftp.json
 *.o
 *.lz
 out.*
 lz_codec
 obj
 tmp
+sftp.json
+xhonza04.zip
