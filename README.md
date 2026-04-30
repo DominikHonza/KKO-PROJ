@@ -16,7 +16,7 @@ Jako kompresní metoda byla zvolena LZSS, protože jde o bezeztrátovou slovník
 
 Nad touto metodou je použit volitelný diferenční model, který před vlastní kompresí převádí data na rozdíly mezi po sobě jdoucími hodnotami. Tento krok může zlepšit lokální regularitu vstupu a tím i úspěšnost následné komprese. Obrazová data se často liší vedle sebe jen málo a tvoří gradienty, což vytváří opakující se vzorce nebo podobné posloupnosti, které lze snadno a efektivně komprimovat.
 
-V adaptivním režimu je obraz rozdělen na bloky a pro každý blok se porovnává horizontální a vertikální skenování. Vybere se ta varianta, která vede k menšímu výstupu. Součástí návrhu je také slovníková vrstva pro vyhledávání shod v LZSS. Ta je zatím otevřená pro další rozšíření a počítá se s variantou využívající buď hash tabulku, nebo BVS, podle toho, která se ukáže jako vhodnější z hlediska složitosti a praktické výkonnosti.
+V adaptivním režimu je obraz rozdělen na bloky a pro každý blok se porovnává horizontální a vertikální skenování. Vybere se ta varianta, která vede k menšímu výstupu. Součástí návrhu je také slovníková vrstva pro vyhledávání shod v LZSS. Ta je variantou využívající hash tabulku, kde se do ní se ukládají pozice řetězců začínajících na daném místě ve slovníku. Klíčem je hash hodnota vypočtená z několika po sobě jdoucích znaků nebo bajtů. Při zpracování nové pozice vstupu se stejným způsobem vypočte hash aktuální sekvence a v hash tabulce se vyhledají kandidátní pozice se shodnou hodnotou. Následně se na těchto pozicích provede přímé porovnání délky skutečné shody. Vybere se nejdelší nalezená shoda, kterou lze zakódovat jako odkaz do slovníku; pokud není shoda dostatečně dlouhá, uloží se symbol přímo jako literál. Po posunu v datech se slovník i hash tabulka průběžně aktualizují, aby odpovídaly aktuálnímu obsahu posuvného okna.
 
 ## Struktura projektu
 
@@ -43,7 +43,7 @@ Při spuštění s přepínačem `-d` program nepotřebuje parametry `-w`, `-m` 
 
 Pak se zpracovává samotný datový obsah. Ve statickém režimu se čtou jednotlivé bloky za sebou, případně se nad nimi spustí dekomprese LZSS a následně se aplikuje inverzní diferenční model. V adaptivním režimu se navíc podle příznaků u každého bloku obnoví správné horizontální nebo vertikální uspořádání a bloky se skládají zpět do výstupního rastru. Výsledkem je přesná rekonstrukce původního RAW obrazu.
 
-## Compression run results
+## Výsledky vyhodnocení výkonnosti
 
 <!-- RESULTS_START -->
 | File | Mode | Orig (B) | Comp (B) | Ratio | BPP | Entropy | C Time | D Time | Status |
