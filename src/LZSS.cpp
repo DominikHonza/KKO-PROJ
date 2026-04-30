@@ -10,6 +10,8 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <deque>
+#include <unordered_map>
 
 namespace {
 /**
@@ -20,14 +22,45 @@ struct Match {
     std::uint8_t length = 0;
 };
 
+using Dictionary = std::unordered_map<std::uint32_t, std::deque<std::size_t>>;
+
+constexpr std::size_t HASH_PREFIX_LENGTH = 3;
+
+/**
+ * @brief Builds a compact key from a 3-byte prefix.
+ * @param input Input data.
+ * @param position Prefix start position.
+ * @return 24-bit key built from three consecutive bytes.
+ */
+std::uint32_t make_key(const std::vector<std::uint8_t>& input, std::size_t position) {
+    return (static_cast<std::uint32_t>(input[position]) << 16) |
+           (static_cast<std::uint32_t>(input[position + 1]) << 8) |
+           static_cast<std::uint32_t>(input[position + 2]);
+}
+
+/**
+ * @brief Inserts one position into dictionary if enough lookahead exists.
+ * @param dictionary Prefix dictionary.
+ * @param input Input data.
+ * @param position Position to index.
+ */
+void add_position(Dictionary& dictionary, const std::vector<std::uint8_t>& input, std::size_t position) {
+    if (position + HASH_PREFIX_LENGTH > input.size()) {
+        return;
+    }
+
+    dictionary[make_key(input, position)].push_back(position);
+}
+
 /**
  * @brief Finds best match in history buffer.
  * @param input Input data.
  * @param position Current position.
  * @param config Compression configuration.
+ * @param dictionary Prefix dictionary for fast candidate lookup.
  * @return Best match (offset, length).
  */
-Match find_best_match(const std::vector<std::uint8_t>& input, std::size_t position, const Config& config) {
+Match find_best_match(const std::vector<std::uint8_t>& input, std::size_t position, const Config& config, Dictionary& dictionary) {
     Match best;
 
     // Start of history window (limited by history_buffer_size)
@@ -35,8 +68,28 @@ Match find_best_match(const std::vector<std::uint8_t>& input, std::size_t positi
     // Maximum match length limited by lookahead buffer and input end
     const std::size_t max_length = std::min<std::size_t>(config.lookahead_buffer_size, input.size() - position);
 
-     // Try all possible candidates in history window
-    for (std::size_t candidate = history_start; candidate < position; ++candidate) {
+    if (max_length < config.min_match_length || position + HASH_PREFIX_LENGTH > input.size()) {
+        return best;
+    }
+
+    auto it = dictionary.find(make_key(input, position));
+    if (it == dictionary.end()) {
+        return best;
+    }
+
+    auto& candidates = it->second;
+
+    while (!candidates.empty() && candidates.front() < history_start) {
+        candidates.pop_front();
+    }
+
+    // Try only positions that share the same prefix hash and are inside the history window.
+    for (auto candidate_it = candidates.rbegin(); candidate_it != candidates.rend(); ++candidate_it) {
+        const std::size_t candidate = *candidate_it;
+        if (candidate >= position) {
+            continue;
+        }
+
         std::size_t length = 0;
         // Compare bytes until mismatch or limit reached
         while (length < max_length && input[candidate + length] == input[position + length]) {
@@ -68,6 +121,7 @@ Match find_best_match(const std::vector<std::uint8_t>& input, std::size_t positi
 std::vector<std::uint8_t> LZSS::compress(const std::vector<std::uint8_t>& input, const Config& config) {
     std::vector<std::uint8_t> output;
     std::size_t position = 0;
+    Dictionary dictionary;
 
     // Process input until all bytes are encoded
     while (position < input.size()) {
@@ -78,16 +132,20 @@ std::vector<std::uint8_t> LZSS::compress(const std::vector<std::uint8_t>& input,
 
         // Each flag byte describes next 8 items
         for (std::uint8_t bit = 0; bit < 8 && position < input.size(); ++bit) {
-            const Match match = find_best_match(input, position, config); // Find best match in history buffer
+            const Match match = find_best_match(input, position, config, dictionary); // Find best match using prefix dictionary
 
             if (match.length >= config.min_match_length) {
                 // Set bit -> this is a reference (match)
                 flags |= static_cast<std::uint8_t>(1u << bit);
                 ByteIO::write_u16(output, match.offset);
                 ByteIO::write_u8(output, match.length);
+                for (std::size_t i = 0; i < match.length; ++i) {
+                    add_position(dictionary, input, position + i);
+                }
                 position += match.length; // Skip matched sequence
             } else {
                 ByteIO::write_u8(output, input[position]); // Store literal byte
+                add_position(dictionary, input, position);
                 ++position;
             }
         }
